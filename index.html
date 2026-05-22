@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>房地产宏观与行业数据量化跟踪系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --theme-color: #0056b3;
+            --theme-bg: #f4f6f9;
+            --theme-panel: #ffffff;
+            --theme-text: #333333;
+            --theme-header-text: #1a2b4c;
+        }
+
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--theme-bg); margin: 0; padding: 0; color: var(--theme-text); transition: background 0.3s; }
+        
+        .sticky-top-container {
+            position: sticky; top: 0; z-index: 990; 
+            background: rgba(244, 246, 249, 0.92);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            padding: 20px 20px 15px 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+        }
+
+        .header { background: var(--theme-panel); padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+        h1 { margin: 0; font-size: 22px; color: var(--theme-header-text); }
+        .controls { display: flex; gap: 10px; align-items: center; margin-top: 10px;}
+        
+        input[type="file"] { display: none; }
+        
+        .btn {
+            background-color: var(--theme-color);
+            color: white; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.3s; border: none; display: flex; align-items: center; gap: 5px;
+        }
+        .btn:hover { filter: brightness(0.9); }
+        .btn-outline { background-color: transparent; color: var(--theme-color); border: 1px solid var(--theme-color); }
+        .btn-outline:hover { background-color: rgba(0,0,0,0.03); }
+        .btn-danger { background-color: transparent; color: #dc3545; border: 1px solid #dc3545; }
+        .btn-danger:hover { background-color: #fff5f5; }
+        
+        #theme-select {
+            padding: 8px 12px; font-size: 14px; border: 1px solid #ced4da; border-radius: 6px; cursor: pointer; background: #fff; font-weight: 500; outline: none;
+        }
+        #theme-select:focus { border-color: var(--theme-color); }
+
+        .city-selector-container { display: flex; align-items: center; background: var(--theme-panel); padding: 15px 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); gap: 15px; margin-bottom: 0; }
+        .city-selector-container label { font-size: 16px; font-weight: bold; color: var(--theme-header-text); }
+        #city-select { padding: 8px 15px; font-size: 15px; border: 1px solid #ced4da; border-radius: 6px; outline: none; cursor: pointer; min-width: 200px; background-color: #fff; font-weight: 500; }
+
+        #charts-container { display: flex; flex-direction: column; gap: 15px; padding: 0 20px 20px 20px; }
+        .chart-wrapper { position: relative; background: var(--theme-panel); border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 15px; width: 100%; transition: transform 0.3s ease; }
+        .chart-box { height: 420px; width: 100%; box-sizing: border-box; padding: 15px; }
+        
+        .time-filters { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; gap: 6px; background: rgba(255,255,255,0.9); padding: 4px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); align-items: center; }
+        .time-btn { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 4px 12px; font-size: 12px; cursor: pointer; color: #495057; font-weight: 500; transition: all 0.2s; }
+        .time-btn:hover { color: var(--theme-color); border-color: #ced4da; background: #e9ecef; }
+
+        .move-controls { position: absolute; top: 15px; left: 15px; z-index: 10; display: flex; flex-direction: column; gap: 3px; background: rgba(255,255,255,0.9); padding: 4px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); align-items: center; }
+        .move-btn { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; color: #495057; font-weight: bold; transition: all 0.2s; line-height: 1; }
+        .move-btn:hover { color: var(--theme-color); border-color: #ced4da; background: #e9ecef; }
+        
+        .loading-box { text-align: center; padding: 60px; background: var(--theme-panel); border-radius: 8px; }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 2000; display: none; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+        .modal-content { background: var(--theme-panel); width: 480px; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
+        .modal-header { padding: 18px 25px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        .modal-header h2 { margin: 0; font-size: 18px; color: var(--theme-header-text); }
+        .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: #888; transition: color 0.2s; }
+        .modal-close:hover { color: #333; }
+        .modal-body { padding: 25px; overflow-y: auto; flex: 1; }
+        .admin-input { width: 100%; padding: 10px 12px; margin-bottom: 15px; border: 1px solid #ced4da; border-radius: 6px; box-sizing: border-box; font-size: 14px; background: var(--theme-bg); color: var(--theme-text); }
+        .admin-input:focus { border-color: var(--theme-color); outline: none; }
+        .modal-divider { border: none; border-top: 1px solid #eee; margin: 20px 0; }
+        .admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 15px; }
+        .admin-grid .btn { justify-content: center; width: 100%; box-sizing: border-box; }
+        
+        .group-tag { display: inline-flex; align-items: center; background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-size: 13px; color: #333; margin: 0 6px 6px 0; }
+        .group-tag-del { margin-left: 6px; cursor: pointer; color: #dc3545; font-weight: bold; }
+        .group-tag-del:hover { color: #a71d2a; }
+        .mapping-list-container { max-height: 250px; overflow-y: auto; border: 1px solid #ced4da; border-radius: 6px; padding: 10px; background: var(--theme-bg); font-size: 13px; }
+        .indicator-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px dashed #ced4da; }
+        .indicator-item:last-child { border-bottom: none; }
+        .indicator-select { max-width: 140px; padding: 4px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; outline: none; background: #fff; color:#333; cursor: pointer;}
+        .indicator-select:focus { border-color: var(--theme-color); }
+
+        #toast-msg { position: fixed; top: 90px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.75); color: #fff; padding: 10px 24px; border-radius: 30px; z-index: 3000; transition: opacity 0.3s; opacity: 0; font-size: 14px; pointer-events: none; }
+
+        body.dark-mode { --theme-bg: #121212; --theme-panel: #1e1e1e; --theme-text: #e0e0e0; --theme-header-text: #ffffff; }
+        body.dark-mode .sticky-top-container { background: rgba(18, 18, 18, 0.9); }
+        body.dark-mode .time-filters, body.dark-mode .move-controls { background: rgba(50, 50, 50, 0.8); }
+        body.dark-mode .time-btn, body.dark-mode .move-btn { background: #333; border-color: #444; color: #bbb; }
+        body.dark-mode #city-select, body.dark-mode #theme-select { background: #2a2a2a; color: #fff; border-color: #444; }
+        body.dark-mode .modal-header, body.dark-mode .modal-divider { border-color: #444; }
+        body.dark-mode .mapping-list-container { border-color: #444; }
+        body.dark-mode .indicator-item { border-bottom-color: #444; }
+        body.dark-mode .group-tag { background: #333; color: #eee; }
+        body.dark-mode .indicator-select { background: #333; color: #eee; border-color: #555; }
+    </style>
+</head>
+<body>
+
+    <div class="sticky-top-container">
+        <div class="header">
+            <h1 id="main-title">房地产宏观与行业数据量化跟踪系统</h1>
+            <div class="controls">
+                <select id="theme-select" onchange="changeTheme(this.value)">
+                    <option value="blue">商务蓝</option>
+                    <option value="cmb">招行红</option>
+                    <option value="orange">彭博橙</option>
+                    <option value="green">科技绿</option>
+                    <option value="dark">极客黑</option>
+                </select>
+                <button class="btn" onclick="resetAllCharts()">🔄 全局还原</button>
+                <button class="btn btn-outline" id="admin-entrance-btn" onclick="openAdminModal()">🔒 管理员登录</button>
+            </div>
+        </div>
+
+        <div id="city-selector-wrapper" class="city-selector-container" style="display: none;">
+            <label for="city-select">观测维度切换：</label>
+            <select id="city-select" onchange="handleCityChange(event)"></select>
+        </div>
+    </div>
+
+    <div id="charts-container">
+        <div style="text-align: center; color: #888; padding: 50px;">正在检查本地是否有保存的数据...</div>
+    </div>
+
+    <input type="file" id="excelFileInput" accept=".csv, .xlsx, .xls" onchange="handleFileUpload(event)">
+
+    <div id="admin-modal" class="modal-overlay" onclick="closeOnBg(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2 id="modal-title">管理员身份验证</h2>
+                <button class="modal-close" onclick="closeAdminModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                
+                <div id="login-section">
+                    <input type="password" id="admin-pwd" class="admin-input" placeholder="请输入管理员密码">
+                    <button class="btn" style="width:100%; justify-content:center;" onclick="loginAdmin()">登 录</button>
+                </div>
+
+                <div id="admin-dashboard" style="display: none;">
+                    
+                    <div style="margin-bottom: 10px; font-weight: bold; color: var(--theme-color);">⚙️ 数据管理</div>
+                    <div class="admin-grid">
+                        <label class="btn" for="excelFileInput" style="margin:0; width:100%;">📤 导入数据</label>
+                        <button class="btn btn-outline" onclick="downloadTemplate()">📥 下载模板</button>
+                    </div>
+                    <button class="btn btn-danger" style="width:100%; justify-content:center; margin-bottom: 10px;" onclick="clearData()">🧹 清除底层缓存数据</button>
+                    
+                    <div style="font-size:12px; color:#888; background:rgba(0,0,0,0.03); padding:8px; border-radius:4px;">
+                        💡 <b>图表类型配置</b>：当前处于管理员模式，点击页面上任意图表右上角的图表切换工具，将自动保存为所有用户的默认排版类型。
+                    </div>
+
+                    <hr class="modal-divider">
+
+                    <div style="margin-bottom: 10px; font-weight: bold; color: var(--theme-color);">📝 系统设置</div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <input type="text" id="new-main-title" class="admin-input" style="margin-bottom:0;" placeholder="输入新的系统大标题">
+                        <button class="btn" style="white-space:nowrap;" onclick="updateMainTitle()">修改标题</button>
+                    </div>
+
+                    <hr class="modal-divider">
+                    
+                    <div style="margin-bottom: 10px; font-weight: bold; color: var(--theme-color);">📂 数据分组与映射</div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <input type="text" id="new-group-name" class="admin-input" style="margin-bottom:0;" placeholder="输入自定义分组名">
+                        <button class="btn" style="white-space:nowrap;" onclick="createCustomGroup()">新建分组</button>
+                    </div>
+                    <div id="custom-groups-list" style="margin-bottom: 10px;"></div>
+                    <div style="font-size:12px; font-weight:bold; margin-bottom:6px;">设定图表归属 (分配后立即生效)：</div>
+                    <div id="indicator-mapping-list" class="mapping-list-container"></div>
+
+                    <hr class="modal-divider">
+                    <div style="margin-bottom: 10px; font-weight: bold; color: var(--theme-header-text);">🔑 修改密码</div>
+                    <input type="password" id="old-pwd" class="admin-input" style="margin-bottom: 8px;" placeholder="请输入旧密码">
+                    <input type="password" id="new-pwd" class="admin-input" placeholder="请输入新密码">
+                    <button class="btn" style="width:100%; justify-content:center;" onclick="changeAdminPassword()">确认修改密码</button>
+                    
+                    <hr class="modal-divider">
+                    <button class="btn btn-outline" onclick="logoutAdmin()" style="width:100%; justify-content:center; border-color:#ccc; color:#666;">🚪 退出管理员模式</button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-msg"></div>
+
+    <script>
+        // --- 权限及分组存储逻辑 ---
+        window.isAdminLogged = false;
+        
+        function getAdminPwd() { return localStorage.getItem('app_admin_pwd') || '19940929'; }
+        function setAdminPwd(pwd) { localStorage.setItem('app_admin_pwd', pwd); }
+        function getChartPref(name) { return localStorage.getItem('pref_chart_type_' + name) || 'line'; }
+        function setChartPref(name, type) { localStorage.setItem('pref_chart_type_' + name, type); }
+        
+        function getCustomGroups() { return JSON.parse(localStorage.getItem('app_custom_groups') || '[]'); }
+        function setCustomGroups(arr) { localStorage.setItem('app_custom_groups', JSON.stringify(arr)); }
+        function getIndicatorMap() { return JSON.parse(localStorage.getItem('app_indicator_map') || '{}'); }
+        function setIndicatorMap(map) { localStorage.setItem('app_indicator_map', JSON.stringify(map)); }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast-msg');
+            toast.innerText = msg; toast.style.opacity = '1';
+            setTimeout(() => toast.style.opacity = '0', 2500);
+        }
+
+        function updateMainTitle() {
+            const input = document.getElementById('new-main-title');
+            const newTitle = input.value.trim();
+            if (!newTitle) {
+                alert('系统大标题不能为空！');
+                return;
+            }
+            localStorage.setItem('app_main_title', newTitle);
+            document.getElementById('main-title').innerText = newTitle;
+            document.title = newTitle;
+            input.value = '';
+            showToast('系统大标题修改成功！');
+        }
+
+        function openAdminModal() {
+            document.getElementById('admin-modal').style.display = 'flex';
+            if (window.isAdminLogged) {
+                document.getElementById('modal-title').innerText = '管理员控制台';
+                document.getElementById('login-section').style.display = 'none';
+                document.getElementById('admin-dashboard').style.display = 'block';
+                renderAdminGroupingUI(); 
+            } else {
+                document.getElementById('modal-title').innerText = '管理员身份验证';
+                document.getElementById('login-section').style.display = 'block';
+                document.getElementById('admin-dashboard').style.display = 'none';
+                document.getElementById('admin-pwd').value = '';
+            }
+        }
+        function closeAdminModal() { document.getElementById('admin-modal').style.display = 'none'; }
+        function closeOnBg(e) { if(e.target.id === 'admin-modal') closeAdminModal(); }
+
+        function loginAdmin() {
+            if (document.getElementById('admin-pwd').value === getAdminPwd()) {
+                window.isAdminLogged = true;
+                document.getElementById('admin-entrance-btn').innerHTML = '👨‍💻 管理后台';
+                openAdminModal(); 
+                showToast('已进入管理员模式');
+            } else { alert('管理员密码错误！'); }
+        }
+
+        function logoutAdmin() {
+            window.isAdminLogged = false;
+            document.getElementById('admin-entrance-btn').innerHTML = '🔒 管理员登录';
+            closeAdminModal(); showToast('已退出管理员模式');
+        }
+
+        function changeAdminPassword() {
+            const oldPwd = document.getElementById('old-pwd').value;
+            const newPwd = document.getElementById('new-pwd').value;
+            if (oldPwd !== getAdminPwd()) { alert('旧密码输入错误！'); return; }
+            if (!newPwd.trim()) { alert('新密码不能为空！'); return; }
+            setAdminPwd(newPwd); alert('管理员密码修改成功！');
+            document.getElementById('old-pwd').value = ''; document.getElementById('new-pwd').value = '';
+        }
+
+        function createCustomGroup() {
+            const input = document.getElementById('new-group-name');
+            const name = input.value.trim();
+            if (!name) return;
+            let arr = getCustomGroups();
+            if (!arr.includes(name)) {
+                arr.push(name);
+                setCustomGroups(arr);
+                input.value = '';
+                renderAdminGroupingUI();
+                rebuildCityGroups();
+            } else { alert('该分组已存在！'); }
+        }
+
+        function deleteCustomGroup(name) {
+            if(!confirm(`确定要删除分组 [${name}] 吗？\n删除后该组内指标将恢复系统自动分配。`)) return;
+            let arr = getCustomGroups();
+            arr = arr.filter(g => g !== name);
+            setCustomGroups(arr);
+            renderAdminGroupingUI();
+            rebuildCityGroups();
+        }
+
+        function updateIndicatorMapping(name, groupValue) {
+            let map = getIndicatorMap();
+            if (groupValue === 'AUTO') { delete map[name]; } 
+            else { map[name] = groupValue; }
+            setIndicatorMap(map);
+            rebuildCityGroups();
+        }
+
+        function renderAdminGroupingUI() {
+            const customGroups = getCustomGroups();
+            const tagContainer = document.getElementById('custom-groups-list');
+            if (customGroups.length === 0) {
+                tagContainer.innerHTML = '<span style="font-size:12px; color:#888;">暂无自定义分组</span>';
+            } else {
+                tagContainer.innerHTML = customGroups.map(g => `<span class="group-tag">${g} <span class="group-tag-del" title="删除分组" onclick="deleteCustomGroup('${g}')">&times;</span></span>`).join('');
+            }
+            
+            const mappingList = document.getElementById('indicator-mapping-list');
+            if (!globalData || !globalData.names) {
+                mappingList.innerHTML = '<div style="color:#888; text-align:center; padding: 20px 0;">请先导入数据，方可配置图表归属</div>';
+                return;
+            }
+            
+            const customMap = getIndicatorMap();
+            let html = '';
+            for (let i = 1; i < globalData.names.length; i++) {
+                let name = globalData.names[i];
+                if (!name || String(name).trim() === '') continue;
+                
+                let currentVal = customMap[name];
+                if (!customGroups.includes(currentVal)) currentVal = 'AUTO';
+                
+                let options = `<option value="AUTO">自动识别分配</option>` + customGroups.map(g => `<option value="${g}" ${currentVal === g ? 'selected' : ''}>${g}</option>`).join('');
+                
+                html += `<div class="indicator-item">
+                    <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:10px; font-weight:500;" title="${name}">${name}</span>
+                    <select class="indicator-select" onchange="updateIndicatorMapping('${name}', this.value)">
+                        ${options}
+                    </select>
+                </div>`;
+            }
+            mappingList.innerHTML = html;
+        }
+
+        // --- 主题与初始化配置 ---
+        const themeConfig = {
+            blue: { color: '#0056b3', isDark: false },
+            cmb: { color: '#d4232a', isDark: false },     
+            orange: { color: '#e67e22', isDark: false },
+            green: { color: '#27ae60', isDark: false },
+            dark: { color: '#f39c12', isDark: true }
+        };
+
+        let currentTheme = localStorage.getItem('appTheme') || 'blue';
+        window.currentCategory = ''; 
+
+        function changeTheme(themeName) {
+            currentTheme = themeName;
+            localStorage.setItem('appTheme', themeName);
+            const cfg = themeConfig[themeName];
+            document.documentElement.style.setProperty('--theme-color', cfg.color);
+            if(cfg.isDark) document.body.classList.add('dark-mode'); else document.body.classList.remove('dark-mode');
+
+            chartInstances.forEach(chart => {
+                const opt = chart.getOption();
+                const isArea = opt.series[0].areaStyle && opt.series[0].areaStyle.opacity > 0;
+                chart.setOption({
+                    series: [{ id: 'mainSeries', itemStyle: { color: cfg.color }, areaStyle: isArea ? { color: cfg.color, opacity: 0.4 } : { opacity: 0 } }],
+                    xAxis: { axisLine: { lineStyle: { color: cfg.isDark ? '#888' : '#333' } } },
+                    yAxis: { splitLine: { lineStyle: { color: cfg.isDark ? '#333' : '#eee' } } }
+                });
+            });
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            // 初始化系统大标题
+            const savedTitle = localStorage.getItem('app_main_title');
+            if (savedTitle) {
+                document.getElementById('main-title').innerText = savedTitle;
+                document.title = savedTitle;
+            }
+
+            const themeSelect = document.getElementById('theme-select');
+            if (!themeConfig[currentTheme]) currentTheme = 'blue';
+            themeSelect.value = currentTheme; changeTheme(currentTheme);
+        });
+
+        // --- 数据解析 ---
+        function parseNativeCSV(text) {
+            let rows = []; let row = []; let cell = ""; let inQuotes = false;
+            for (let i = 0; i < text.length; i++) {
+                let c = text[i];
+                if (inQuotes) {
+                    if (c === '"') { if (i + 1 < text.length && text[i + 1] === '"') { cell += '"'; i++; } else { inQuotes = false; } } else { cell += c; }
+                } else {
+                    if (c === '"') { inQuotes = true; } else if (c === ',') { row.push(cell); cell = ""; } else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ""; } else if (c !== '\r') { cell += c; }
+                }
+            }
+            if (cell !== "" || row.length > 0) { row.push(cell); rows.push(row); }
+            return rows;
+        }
+
+        function extractCityGroup(name) {
+            if (!name) return "宏观要素";
+            if (name.includes("消费者信心指数")) return "消费者信心指数";
+            if (name.includes(':') || name.includes('：')) {
+                let parts = name.replace(/：/g, ':').split(':');
+                if (parts[0] === '中国' || parts[0] === '全国') {
+                    if (parts.length > 2) return parts[1]; 
+                    if (parts.length === 2) return "宏观要素"; 
+                }
+                if (parts.length >= 2) {
+                    const provinces = ["广东","江苏","浙江","山东","河南","四川","湖北","湖南","河北","福建","安徽","辽宁","陕西","江西","重庆","广西","山西","云南","吉林","黑龙江","内蒙古","贵州","甘肃","海南","宁夏","新疆","青海","西藏","北京","上海","天津"];
+                    if (provinces.includes(parts[0]) && parts.length > 2) return parts[1];
+                    return parts[0]; 
+                }
+            }
+            const cities = ["北京","上海","广州","深圳","佛山","东莞","烟台","杭州","宁波","南京","苏州","合肥","无锡","成都","重庆","武汉","天津","厦门","福州","郑州","西安","长沙","青岛","济南","百城"];
+            for (let c of cities) { if (name.includes(c)) return c; }
+            return "宏观要素"; 
+        }
+
+        let chartInstances = []; let globalDates = []; let globalData = null; let currentRenderTimer = null; 
+
+        window.onload = function() {
+            const savedData = localStorage.getItem('realEstateMacroData');
+            if (savedData) { try { processData(JSON.parse(savedData)); } catch (e) { showEmptyMessage(); } } 
+            else { showEmptyMessage(); }
+        };
+
+        function showEmptyMessage() {
+            document.getElementById('city-selector-wrapper').style.display = 'none';
+            document.getElementById('charts-container').innerHTML = '<div style="text-align: center; color: #888; padding: 50px;">欢迎使用。请使用管理员身份导入 4 行表头的数据文件。</div>';
+        }
+
+        function downloadTemplate() {
+            const templateAoA = [
+                ["指标名称", "广东:深圳:租金回报率", "中国:个人住房公积金贷款利率:5年以上", "中国:金融机构人民币贷款加权平均利率:个人住房贷款"],
+                ["数据频率", "月", "月", "月"], ["数据单位", "%", "%", "%"], ["数据来源", "Wind", "中指", "统计局"],
+                ["2025-11-01", 1.8, 2.6, 3.8], ["2025-12-01", 1.9, 2.6, 3.7]
+            ];
+            const worksheet = XLSX.utils.aoa_to_sheet(templateAoA);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "数据源");
+            XLSX.writeFile(workbook, "房地产量化跟踪数据.xlsx");
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            closeAdminModal(); 
+            document.getElementById('city-selector-wrapper').style.display = 'none';
+            const container = document.getElementById('charts-container');
+            container.innerHTML = `<div class="loading-box"><div class="loading-title">正在读取文件内容...</div><div class="loading-desc">系统正在调用底层引擎解析文件，请稍候。</div></div>`;
+            const fileExt = file.name.split('.').pop().toLowerCase();
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                setTimeout(() => {
+                    try {
+                        let rows = [];
+                        if (fileExt === 'csv') rows = parseNativeCSV(e.target.result);
+                        else {
+                            const data = new Uint8Array(e.target.result);
+                            const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+                            rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1, defval: null });
+                        }
+                        if (rows && rows.length >= 5) {
+                            try { localStorage.setItem('realEstateMacroData', JSON.stringify(rows)); } catch (err) {}
+                            processData(rows);
+                        } else { alert("数据格式不正确！"); showEmptyMessage(); }
+                    } catch(err) { alert("文件解析错误！"); showEmptyMessage(); }
+                }, 50);
+            };
+            if (fileExt === 'csv') reader.readAsText(file, 'GB18030'); else reader.readAsArrayBuffer(file);
+            event.target.value = ''; 
+        }
+
+        function clearData() {
+            if(confirm("警告：确定要清除所有底层缓存数据吗？\n(注意：清除数据不会清空您建立的分组结构)")) {
+                localStorage.removeItem('realEstateMacroData');
+                if (currentRenderTimer) clearTimeout(currentRenderTimer);
+                chartInstances.forEach(chart => chart.dispose()); chartInstances = []; globalData = null;
+                showEmptyMessage(); closeAdminModal();
+            }
+        }
+
+        function rebuildCityGroups() {
+            if (!globalData || !globalData.names) return;
+            let cityGroups = {};
+            let customMap = getIndicatorMap();
+            let customGroups = getCustomGroups();
+
+            for (let i = 1; i < globalData.names.length; i++) {
+                let name = globalData.names[i];
+                if (!name || String(name).trim() === '') continue;
+                
+                let targetGroup = customMap[name];
+                if (!targetGroup || !customGroups.includes(targetGroup)) {
+                    targetGroup = extractCityGroup(name);
+                }
+                
+                if (!cityGroups[targetGroup]) cityGroups[targetGroup] = [];
+                cityGroups[targetGroup].push(i);
+            }
+            
+            globalData.cityGroups = cityGroups;
+            renderDropdown();
+        }
+
+        function processData(rows) {
+            const names = rows[0]; const freqs = rows[1]; const units = rows[2]; const sources = rows[3];
+            const dataRows = rows.slice(4).filter(row => {
+                if (!row || row.length === 0 || row[0] == null) return false;
+                const dStr = String(row[0]).trim();
+                return /^\d/.test(dStr);
+            });
+            globalDates = dataRows.map(row => {
+                let d = row[0];
+                if (!d) return '';
+                if (d instanceof Date) {
+                    const offset = d.getTimezoneOffset();
+                    return new Date(d.getTime() - (offset*60*1000)).toISOString().split('T')[0];
+                }
+                d = String(d).trim();
+                return d.includes('/') ? d.replace(/\//g, '-') : d.split('T')[0];
+            });
+
+            let pfIdx = -1; let mortIdx = -1;
+            for (let i = 1; i < names.length; i++) {
+                let name = names[i];
+                if (name && String(name).trim() !== '') {
+                    if (name.includes('个人住房公积金贷款利率:5年以上')) pfIdx = i;
+                    if (name.includes('金融机构人民币贷款加权平均利率:个人住房贷款')) mortIdx = i;
+                }
+            }
+            
+            globalData = { names, freqs, units, sources, dataRows, macroRates: { pfIdx, mortIdx } };
+            rebuildCityGroups();
+            if (window.isAdminLogged) { renderAdminGroupingUI(); }
+        }
+
+        function renderDropdown() {
+            const wrapper = document.getElementById('city-selector-wrapper');
+            const select = document.getElementById('city-select');
+            select.innerHTML = '';
+            
+            const categories = Object.keys(globalData.cityGroups).sort((a, b) => {
+                const order = { '宏观要素': 0, '消费者信心指数': 1 };
+                const aIdx = order[a] !== undefined ? order[a] : 2;
+                const bIdx = order[b] !== undefined ? order[b] : 2;
+                if (aIdx !== bIdx) return aIdx - bIdx;
+                return a.localeCompare(b);
+            });
+
+            categories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category; option.innerText = `${category} (${globalData.cityGroups[category].length})`;
+                select.appendChild(option);
+            });
+            
+            wrapper.style.display = 'flex';
+            if (categories.length > 0) { 
+                if (!categories.includes(window.currentCategory)) {
+                    window.currentCategory = categories[0];
+                }
+                select.value = window.currentCategory;
+                renderCityCharts(window.currentCategory); 
+            } else {
+                document.getElementById('charts-container').innerHTML = '';
+            }
+        }
+
+        function handleCityChange(event) {
+            window.currentCategory = event.target.value;
+            renderCityCharts(window.currentCategory);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        window.moveChart = function(colIndex, dir) {
+            if (!globalData || !window.currentCategory) return;
+            const arr = globalData.cityGroups[window.currentCategory];
+            const idx = arr.indexOf(colIndex);
+            if (idx === -1) return;
+
+            const currentEl = document.getElementById('wrapper-' + colIndex);
+            if (!currentEl) return;
+
+            if (dir === -1 && idx > 0) {
+                [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+                const prevEl = currentEl.previousElementSibling;
+                if (prevEl) { currentEl.parentNode.insertBefore(currentEl, prevEl); }
+            } else if (dir === 1 && idx < arr.length - 1) {
+                [arr[idx + 1], arr[idx]] = [arr[idx], arr[idx + 1]];
+                const nextEl = currentEl.nextElementSibling;
+                if (nextEl) { currentEl.parentNode.insertBefore(currentEl, nextEl.nextElementSibling); }
+            }
+        };
+
+        function renderCityCharts(category) {
+            if (currentRenderTimer) clearTimeout(currentRenderTimer);
+            const container = document.getElementById('charts-container');
+            chartInstances.forEach(chart => chart.dispose());
+            chartInstances = []; container.innerHTML = ''; 
+            
+            if (!globalData.cityGroups[category]) return;
+            
+            const validColumns = globalData.cityGroups[category];
+            let currentRenderIndex = 0;
+
+            function renderBatch() {
+                let batchSize = 2; 
+                for (let b = 0; b < batchSize && currentRenderIndex < validColumns.length; b++) {
+                    let colIndex = validColumns[currentRenderIndex];
+                    let varName = globalData.names[colIndex];
+
+                    let yValues = globalData.dataRows.map(row => {
+                        let val = row[colIndex];
+                        if (typeof val === 'string') val = val.trim().replace(/,/g, ''); 
+                        return (val === null || isNaN(val) || val === "") ? null : Number(val);
+                    });
+
+                    let extraSeries = [];
+                    if (varName.includes('租金回报率')) {
+                        if (globalData.macroRates.mortIdx !== -1) {
+                            extraSeries.push({
+                                name: globalData.names[globalData.macroRates.mortIdx],
+                                data: globalData.dataRows.map(r => {
+                                    let v = r[globalData.macroRates.mortIdx];
+                                    if (typeof v === 'string') v = v.trim().replace(/,/g, '');
+                                    return (v === null || isNaN(v) || v === "") ? null : Number(v);
+                                })
+                            });
+                        }
+                        if (globalData.macroRates.pfIdx !== -1) {
+                            extraSeries.push({
+                                name: globalData.names[globalData.macroRates.pfIdx],
+                                data: globalData.dataRows.map(r => {
+                                    let v = r[globalData.macroRates.pfIdx];
+                                    if (typeof v === 'string') v = v.trim().replace(/,/g, '');
+                                    return (v === null || isNaN(v) || v === "") ? null : Number(v);
+                                })
+                            });
+                        }
+                    }
+
+                    const wrapperDiv = document.createElement('div'); 
+                    wrapperDiv.className = 'chart-wrapper';
+                    wrapperDiv.id = 'wrapper-' + colIndex;
+
+                    wrapperDiv.innerHTML = `
+                    <div class="move-controls">
+                        <button class="move-btn" title="向上" onclick="moveChart(${colIndex}, -1)">▲</button>
+                        <button class="move-btn" title="向下" onclick="moveChart(${colIndex}, 1)">▼</button>
+                    </div>
+                    <div class="time-filters">
+                        <button class="time-btn" onclick="zoomCharts(3, ${currentRenderIndex})">近3月</button>
+                        <button class="time-btn" onclick="zoomCharts(6, ${currentRenderIndex})">近6月</button>
+                        <button class="time-btn" onclick="zoomCharts(12, ${currentRenderIndex})">近1年</button>
+                        <button class="time-btn" onclick="zoomCharts('all', ${currentRenderIndex})">全部</button>
+                    </div>
+                    <div class="chart-box" id="chart-${currentRenderIndex}"></div>`;
+                    
+                    container.appendChild(wrapperDiv);
+
+                    let f = (globalData.freqs && globalData.freqs[colIndex]) ? globalData.freqs[colIndex] : '-';
+                    let u = (globalData.units && globalData.units[colIndex]) ? globalData.units[colIndex] : '-';
+                    let s = (globalData.sources && globalData.sources[colIndex]) ? globalData.sources[colIndex] : '-';
+
+                    initChart(`chart-${currentRenderIndex}`, globalDates, yValues, varName, f, u, s, extraSeries);
+                    currentRenderIndex++;
+                }
+                if (currentRenderIndex < validColumns.length) currentRenderTimer = setTimeout(renderBatch, 40); 
+                else echarts.connect(chartInstances);
+            }
+            renderBatch();
+        }
+
+        window.resetAllCharts = function() {
+            if (chartInstances.length === 0) return;
+            chartInstances[0].dispatchAction({ type: 'dataZoom', start: 0, end: 100 });
+            const cfg = themeConfig[currentTheme];
+            chartInstances.forEach(chart => {
+                let savedType = getChartPref(chart.__name);
+                let initType = savedType === 'bar' ? 'bar' : 'line';
+                let initSmooth = savedType === 'line' ? !chart.__isLarge : false;
+                let initAreaOpacity = savedType === 'area' ? 0.4 : 0;
+                
+                let seriesArr = [{ 
+                    id: 'mainSeries', type: initType, data: chart.__yData, 
+                    smooth: initSmooth, showSymbol: chart.__showSymbol, symbol: 'circle', symbolSize: 6, connectNulls: true,
+                    areaStyle: { opacity: initAreaOpacity, color: cfg.color } 
+                }];
+
+                if (chart.__extraSeries && chart.__extraSeries.length > 0) {
+                    chart.__extraSeries.forEach((es, i) => {
+                        seriesArr.push({
+                            name: es.name, type: 'line', data: es.data, smooth: true, connectNulls: true,
+                            symbol: 'none', lineStyle: { type: 'dashed', width: 2 },
+                            itemStyle: { color: i === 0 ? '#e67e22' : '#27ae60' }
+                        });
+                    });
+                }
+                
+                chart.setOption({ series: seriesArr }, { replaceMerge: ['series'] });
+            });
+        };
+
+        window.zoomCharts = function(months, chartIndex) {
+            const latestDate = new Date(globalDates[globalDates.length - 1].replace(/-/g, '/'));
+            let startIndex = 0;
+            if (months !== 'all') {
+                latestDate.setMonth(latestDate.getMonth() - months);
+                for (let i = 0; i < globalDates.length; i++) {
+                    let checkDate = new Date(globalDates[i].replace(/-/g, '/'));
+                    if (!isNaN(checkDate.getTime()) && checkDate >= latestDate) { startIndex = i; break; }
+                }
+            }
+            chartInstances[chartIndex].dispatchAction({ type: 'dataZoom', startValue: startIndex, endValue: globalDates.length - 1 });
+        };
+
+        function initChart(domId, xData, yData, name, freq, unit, source, extraSeries = []) {
+            const chart = echarts.init(document.getElementById(domId));
+            const cfg = themeConfig[currentTheme];
+            const isLarge = yData.length > 500;
+            const isLowFreq = freq && !String(freq).includes('日');
+            const shouldShowSymbol = isLowFreq || !isLarge;
+            
+            chart.__yData = yData;
+            chart.__isLarge = isLarge;
+            chart.__name = name;
+            chart.__extraSeries = extraSeries;
+            chart.__showSymbol = shouldShowSymbol;
+
+            let savedType = getChartPref(name);
+            let initType = savedType === 'bar' ? 'bar' : 'line';
+            let initSmooth = savedType === 'line' ? !isLarge : false;
+            let initAreaOpacity = savedType === 'area' ? 0.4 : 0;
+
+            let seriesConfig = [{ 
+                id: 'mainSeries', name: name, type: initType, data: yData, 
+                smooth: initSmooth, connectNulls: true, itemStyle: { color: cfg.color }, 
+                symbol: 'circle', symbolSize: 6, showSymbol: shouldShowSymbol,
+                areaStyle: { opacity: initAreaOpacity, color: cfg.color } 
+            }];
+
+            let legendConfig = null;
+            if (extraSeries && extraSeries.length > 0) {
+                legendConfig = { 
+                    show: true, top: 30, left: 'center', 
+                    textStyle: { color: cfg.isDark ? '#ccc' : '#333' },
+                    data: [name].concat(extraSeries.map(s => s.name))
+                };
+                extraSeries.forEach((es, index) => {
+                    seriesConfig.push({
+                        name: es.name, type: 'line', data: es.data, smooth: true, connectNulls: true,
+                        symbol: 'none', lineStyle: { type: 'dashed', width: 2 }, 
+                        itemStyle: { color: index === 0 ? '#e67e22' : '#27ae60' } 
+                    });
+                });
+            }
+
+            const option = {
+                animation: false,
+                title: { text: name, subtext: `频率：${freq||'-'} | 来源：${source||'-'}`, left: '5%', textStyle: { color: cfg.isDark ? '#fff' : '#1a2b4c' } },
+                legend: legendConfig,
+                tooltip: { 
+                    trigger: 'axis', transitionDuration: 0, backgroundColor: 'rgba(255, 255, 255, 0.95)', padding: [10, 15],
+                    formatter: (params) => {
+                        if (!params || params.length === 0) return '';
+                        let res = `<div style="font-size:12px;color:#666;margin-bottom:4px;">${params[0].name}</div>`;
+                        params.forEach(p => {
+                            let val = p.value;
+                            if (val === undefined || val === null || isNaN(val)) {
+                                res += `<div><span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:#ccc;"></span> ${p.seriesName}：<b>暂无数据</b></div>`;
+                            } else {
+                                res += `<div>${p.marker} ${p.seriesName}：<b>${val}</b> <span style="font-size:12px;color:#888;">${unit !== '无' && unit !== '-' ? unit : ''}</span></div>`;
+                            }
+                        });
+                        return res;
+                    }
+                },
+                grid: { left: '8%', right: '5%', bottom: '15%', top: extraSeries.length > 0 ? '25%' : '25%', containLabel: true },
+                toolbox: {
+                    right: '5%',
+                    feature: {
+                        myToLine: { 
+                            title: '切换为折线', icon: 'M4.1 25.84a1.44 1.44 0 0 1-1-2.46l6.23-6.23a1.44 1.44 0 0 1 2 0l4.63 4.63a1.44 1.44 0 0 0 2 0l7.39-7.39a1.44 1.44 0 0 1 2 2l-7.39 7.39a1.44 1.44 0 0 1-2 0l-4.63-4.63-5.23 5.23a1.41 1.41 0 0 1-1 .46z', 
+                            onclick: function (){ 
+                                if (window.isAdminLogged) { setChartPref(chart.__name, 'line'); showToast(`[${chart.__name}] 已设为默认折线图`); }
+                                let activeCfg = themeConfig[currentTheme];
+                                let newSeries = [{ id: 'mainSeries', type: 'line', data: chart.__yData, smooth: !chart.__isLarge, showSymbol: chart.__showSymbol, connectNulls: true, itemStyle: { color: activeCfg.color }, areaStyle: { opacity: 0 } }];
+                                if (chart.__extraSeries) { chart.__extraSeries.forEach((es, i) => newSeries.push({ name: es.name, type: 'line', data: es.data, smooth: true, connectNulls: true, symbol: 'none', lineStyle: { type: 'dashed', width: 2 }, itemStyle: { color: i === 0 ? '#e67e22' : '#27ae60' } })); }
+                                chart.setOption({ series: newSeries }, { replaceMerge: ['series'] }); 
+                            } 
+                        },
+                        myToArea: { 
+                            title: '切换为面积图', icon: 'M3 26h26v-4H3zm0-6h26v-6H3zm0-8h26V6H3z', 
+                            onclick: function (){ 
+                                if (window.isAdminLogged) { setChartPref(chart.__name, 'area'); showToast(`[${chart.__name}] 已设为默认面积图`); }
+                                let activeCfg = themeConfig[currentTheme];
+                                let newSeries = [{ id: 'mainSeries', type: 'line', data: chart.__yData, smooth: false, showSymbol: chart.__showSymbol, connectNulls: true, itemStyle: { color: activeCfg.color }, areaStyle: { opacity: 0.4, color: activeCfg.color } }];
+                                if (chart.__extraSeries) { chart.__extraSeries.forEach((es, i) => newSeries.push({ name: es.name, type: 'line', data: es.data, smooth: true, connectNulls: true, symbol: 'none', lineStyle: { type: 'dashed', width: 2 }, itemStyle: { color: i === 0 ? '#e67e22' : '#27ae60' } })); }
+                                chart.setOption({ series: newSeries }, { replaceMerge: ['series'] }); 
+                            } 
+                        },
+                        myToBar: { 
+                            title: '切换为柱状图', icon: 'M4 2v24h24v-24h-24zm3 22v-14h4v14h-4zm6 0v-20h4v20h-4zm6 0v-10h4v14h-4zm6 0v-16h4v16h-4z', 
+                            onclick: function (){ 
+                                if (window.isAdminLogged) { setChartPref(chart.__name, 'bar'); showToast(`[${chart.__name}] 已设为默认柱状图`); }
+                                let activeCfg = themeConfig[currentTheme];
+                                let newSeries = [{ id: 'mainSeries', type: 'bar', data: chart.__yData, itemStyle: { color: activeCfg.color }, areaStyle: { opacity: 0 } }];
+                                if (chart.__extraSeries) { chart.__extraSeries.forEach((es, i) => newSeries.push({ name: es.name, type: 'line', data: es.data, smooth: true, connectNulls: true, symbol: 'none', lineStyle: { type: 'dashed', width: 2 }, itemStyle: { color: i === 0 ? '#e67e22' : '#27ae60' } })); }
+                                chart.setOption({ series: newSeries }, { replaceMerge: ['series'] }); 
+                            } 
+                        },
+                        dataView: { readOnly: false }, restore: {}, saveAsImage: {}
+                    }
+                },
+                xAxis: { type: 'category', data: xData, axisLine: { lineStyle: { color: cfg.isDark ? '#666' : '#333' } }, axisPointer: { label: { show: true }, animation: false } },
+                yAxis: { type: 'value', name: unit !== '无' && unit !== '-' ? unit : '', scale: true, splitLine: { lineStyle: { color: cfg.isDark ? '#333' : '#eee' } } },
+                dataZoom: [{ type: 'inside', zoomOnMouseWheel: false, moveOnMouseMove: true }, { type: 'slider', bottom: 10, height: 20, borderColor: 'transparent', fillerColor: 'rgba(0,0,0,0.1)' }],
+                series: seriesConfig
+            };
+            chart.setOption(option);
+            chartInstances.push(chart);
+        }
+
+        window.addEventListener('resize', () => chartInstances.forEach(c => c.resize()));
+    </script>
+</body>
+</html>
