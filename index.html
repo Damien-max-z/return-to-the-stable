@@ -392,20 +392,37 @@
             });
         }
 
-        // --- 核心更新：GitHub Pages 云端自动拉取逻辑 ---
+        // --- 核心更新：解决乱码与自动拉取逻辑 ---
         window.onload = function() {
             // 设置主题
             const themeSelect = document.getElementById('theme-select');
             if (!themeConfig[currentTheme]) currentTheme = 'blue';
             themeSelect.value = currentTheme; changeTheme(currentTheme);
 
-            // Fetch API 请求根目录下的 config.json 和 data.csv (加时间戳防止GitHub强缓存)
+            const container = document.getElementById('charts-container');
+            container.innerHTML = `<div class="loading-box"><div class="loading-title">正在从云端拉取最新配置与数据...</div><div class="loading-desc">如果长时间无响应，请确保 GitHub 仓库中存在 data.csv</div></div>`;
+
+            // 1. 拉取 config.json
             const fetchConfig = fetch('./config.json?v=' + new Date().getTime()).then(res => res.ok ? res.json() : null).catch(() => null);
-            const fetchData = fetch('./data.csv?v=' + new Date().getTime()).then(res => res.ok ? res.text() : null).catch(() => null);
+            
+            // 2. 拉取 data.csv (带智能编码探测)
+            const fetchData = fetch('./data.csv?v=' + new Date().getTime())
+                .then(res => res.ok ? res.arrayBuffer() : null)
+                .then(buffer => {
+                    if (!buffer) return null;
+                    // 先尝试用网页标准 UTF-8 解码
+                    let text = new TextDecoder('utf-8').decode(buffer);
+                    // 如果发现乱码占位符 ''，说明这是 Windows Excel 默认导出的 GBK 编码，触发重新解码
+                    if (text.includes('')) {
+                        text = new TextDecoder('gb18030').decode(buffer);
+                    }
+                    return text;
+                })
+                .catch(() => null);
 
             Promise.all([fetchConfig, fetchData]).then(([config, csvText]) => {
                 
-                // 1. 应用云端配置 (会覆盖本地对应设置)
+                // 1. 应用云端配置
                 if (config) {
                     if (config.customGroups) localStorage.setItem('app_custom_groups', JSON.stringify(config.customGroups));
                     if (config.indicatorMap) localStorage.setItem('app_indicator_map', JSON.stringify(config.indicatorMap));
@@ -418,7 +435,6 @@
                         Object.keys(config.chartPrefs).forEach(k => localStorage.setItem('pref_chart_type_' + k, config.chartPrefs[k]));
                     }
                 } else {
-                    // 若无云端配置，读取本地作为降级
                     const savedTitle = localStorage.getItem('app_main_title');
                     if (savedTitle) {
                         document.getElementById('main-title').innerText = savedTitle;
@@ -435,7 +451,7 @@
                     }
                 }
                 
-                // 3. 降级：如果云端均无文件，或解析失败，寻找本地浏览器缓存 (方便本机测试)
+                // 3. 降级本地缓存
                 checkLocalCache();
             });
         };
@@ -517,7 +533,13 @@
                 setTimeout(() => {
                     try {
                         let rows = [];
-                        if (fileExt === 'csv') rows = parseNativeCSV(e.target.result);
+                        if (fileExt === 'csv') {
+                            // 本地上传也加入同样的智能编码处理
+                            const buffer = e.target.result;
+                            let text = new TextDecoder('utf-8').decode(buffer);
+                            if(text.includes('')) text = new TextDecoder('gb18030').decode(buffer);
+                            rows = parseNativeCSV(text);
+                        }
                         else {
                             const data = new Uint8Array(e.target.result);
                             const workbook = XLSX.read(data, { type: 'array', cellDates: true });
@@ -530,7 +552,7 @@
                     } catch(err) { alert("文件解析错误！"); showEmptyMessage(); }
                 }, 50);
             };
-            if (fileExt === 'csv') reader.readAsText(file, 'GB18030'); else reader.readAsArrayBuffer(file);
+            if (fileExt === 'csv') reader.readAsArrayBuffer(file); else reader.readAsArrayBuffer(file);
             event.target.value = ''; 
         }
 
