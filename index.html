@@ -123,7 +123,10 @@
     </div>
 
     <div id="charts-container">
-        <div style="text-align: center; color: #888; padding: 50px;">正在检查本地是否有保存的数据...</div>
+        <div style="text-align: center; color: #888; padding: 50px;">
+            <div class="loading-title" style="font-size:18px; font-weight:bold; margin-bottom:10px;">正在从云端拉取配置与数据...</div>
+            <div class="loading-desc">如果长时间无响应，请确保 GitHub 仓库中存在 data.csv 和 config.json</div>
+        </div>
     </div>
 
     <input type="file" id="excelFileInput" accept=".csv, .xlsx, .xls" onchange="handleFileUpload(event)">
@@ -143,23 +146,28 @@
 
                 <div id="admin-dashboard" style="display: none;">
                     
-                    <div style="margin-bottom: 10px; font-weight: bold; color: var(--theme-color);">⚙️ 数据管理</div>
+                    <div style="margin-bottom: 10px; font-weight: bold; color: var(--theme-color);">⚙️ 数据与系统配置分发</div>
                     <div class="admin-grid">
-                        <label class="btn" for="excelFileInput" style="margin:0; width:100%;">📤 导入数据</label>
-                        <button class="btn btn-outline" onclick="downloadTemplate()">📥 下载模板</button>
+                        <label class="btn" for="excelFileInput" style="margin:0; width:100%;">📤 导入新数据(本地预览)</label>
+                        <button class="btn btn-outline" onclick="downloadTemplate()">📥 下载空白模板</button>
                     </div>
-                    <button class="btn btn-danger" style="width:100%; justify-content:center; margin-bottom: 10px;" onclick="clearData()">🧹 清除底层缓存数据</button>
+                    <button class="btn btn-danger" style="width:100%; justify-content:center; margin-bottom: 10px;" onclick="clearData()">🧹 清除本地缓存数据</button>
                     
-                    <div style="font-size:12px; color:#888; background:rgba(0,0,0,0.03); padding:8px; border-radius:4px;">
-                        💡 <b>图表类型配置</b>：当前处于管理员模式，点击页面上任意图表右上角的图表切换工具，将自动保存为所有用户的默认排版类型。
+                    <button class="btn btn-outline" style="width:100%; justify-content:center; margin-bottom: 10px; border-color: var(--theme-color); color: var(--theme-color);" onclick="downloadConfig()">⬇️ 下载全局配置文件 (config.json)</button>
+                    <div style="font-size:12px; color:#888; background:rgba(0,0,0,0.03); padding:8px; border-radius:4px; line-height:1.5;">
+                        💡 <b>如何让所有人看到您的设置？</b><br>
+                        1. 在本界面设置好标题、分组、图表默认排版。<br>
+                        2. 点击上方按钮下载 <b>config.json</b>。<br>
+                        3. 将您的数据存为 <b>data.csv</b> (逗号分隔)。<br>
+                        4. 将这两个文件一起上传到您的 GitHub 仓库中，所有人即可自动同步您的配置和数据！
                     </div>
 
                     <hr class="modal-divider">
 
-                    <div style="margin-bottom: 10px; font-weight: bold; color: var(--theme-color);">📝 系统设置</div>
+                    <div style="margin-bottom: 10px; font-weight: bold; color: var(--theme-color);">📝 网页大标题设置</div>
                     <div style="display: flex; gap: 8px; margin-bottom: 10px;">
                         <input type="text" id="new-main-title" class="admin-input" style="margin-bottom:0;" placeholder="输入新的系统大标题">
-                        <button class="btn" style="white-space:nowrap;" onclick="updateMainTitle()">修改标题</button>
+                        <button class="btn" style="white-space:nowrap;" onclick="updateMainTitle()">保存大标题</button>
                     </div>
 
                     <hr class="modal-divider">
@@ -174,7 +182,7 @@
                     <div id="indicator-mapping-list" class="mapping-list-container"></div>
 
                     <hr class="modal-divider">
-                    <div style="margin-bottom: 10px; font-weight: bold; color: var(--theme-header-text);">🔑 修改密码</div>
+                    <div style="margin-bottom: 10px; font-weight: bold; color: var(--theme-header-text);">🔑 修改本地密码</div>
                     <input type="password" id="old-pwd" class="admin-input" style="margin-bottom: 8px;" placeholder="请输入旧密码">
                     <input type="password" id="new-pwd" class="admin-input" placeholder="请输入新密码">
                     <button class="btn" style="width:100%; justify-content:center;" onclick="changeAdminPassword()">确认修改密码</button>
@@ -209,18 +217,41 @@
             setTimeout(() => toast.style.opacity = '0', 2500);
         }
 
+        // --- 核心：下载全局配置 (供静态网站多端同步使用) ---
+        function downloadConfig() {
+            const config = {
+                mainTitle: localStorage.getItem('app_main_title') || '房地产宏观与行业数据量化跟踪系统',
+                customGroups: getCustomGroups(),
+                indicatorMap: getIndicatorMap(),
+                chartPrefs: {}
+            };
+            
+            for(let i=0; i<localStorage.length; i++){
+                let key = localStorage.key(i);
+                if(key && key.startsWith('pref_chart_type_')) {
+                    config.chartPrefs[key.replace('pref_chart_type_', '')] = localStorage.getItem(key);
+                }
+            }
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(config, null, 4));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "config.json");
+            document.body.appendChild(downloadAnchorNode); 
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+            showToast('已生成 config.json，请将其上传至 GitHub');
+        }
+
         function updateMainTitle() {
             const input = document.getElementById('new-main-title');
             const newTitle = input.value.trim();
-            if (!newTitle) {
-                alert('系统大标题不能为空！');
-                return;
-            }
+            if (!newTitle) { alert('系统大标题不能为空！'); return; }
             localStorage.setItem('app_main_title', newTitle);
             document.getElementById('main-title').innerText = newTitle;
             document.title = newTitle;
             input.value = '';
-            showToast('系统大标题修改成功！');
+            showToast('系统大标题修改成功，记得导出配置哦！');
         }
 
         function openAdminModal() {
@@ -306,7 +337,7 @@
             
             const mappingList = document.getElementById('indicator-mapping-list');
             if (!globalData || !globalData.names) {
-                mappingList.innerHTML = '<div style="color:#888; text-align:center; padding: 20px 0;">请先导入数据，方可配置图表归属</div>';
+                mappingList.innerHTML = '<div style="color:#888; text-align:center; padding: 20px 0;">请先确保当前有数据加载，方可配置图表归属</div>';
                 return;
             }
             
@@ -361,20 +392,69 @@
             });
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
-            // 初始化系统大标题
-            const savedTitle = localStorage.getItem('app_main_title');
-            if (savedTitle) {
-                document.getElementById('main-title').innerText = savedTitle;
-                document.title = savedTitle;
-            }
-
+        // --- 核心更新：GitHub Pages 云端自动拉取逻辑 ---
+        window.onload = function() {
+            // 设置主题
             const themeSelect = document.getElementById('theme-select');
             if (!themeConfig[currentTheme]) currentTheme = 'blue';
             themeSelect.value = currentTheme; changeTheme(currentTheme);
-        });
 
-        // --- 数据解析 ---
+            // Fetch API 请求根目录下的 config.json 和 data.csv (加时间戳防止GitHub强缓存)
+            const fetchConfig = fetch('./config.json?v=' + new Date().getTime()).then(res => res.ok ? res.json() : null).catch(() => null);
+            const fetchData = fetch('./data.csv?v=' + new Date().getTime()).then(res => res.ok ? res.text() : null).catch(() => null);
+
+            Promise.all([fetchConfig, fetchData]).then(([config, csvText]) => {
+                
+                // 1. 应用云端配置 (会覆盖本地对应设置)
+                if (config) {
+                    if (config.customGroups) localStorage.setItem('app_custom_groups', JSON.stringify(config.customGroups));
+                    if (config.indicatorMap) localStorage.setItem('app_indicator_map', JSON.stringify(config.indicatorMap));
+                    if (config.mainTitle) {
+                        localStorage.setItem('app_main_title', config.mainTitle);
+                        document.getElementById('main-title').innerText = config.mainTitle;
+                        document.title = config.mainTitle;
+                    }
+                    if (config.chartPrefs) {
+                        Object.keys(config.chartPrefs).forEach(k => localStorage.setItem('pref_chart_type_' + k, config.chartPrefs[k]));
+                    }
+                } else {
+                    // 若无云端配置，读取本地作为降级
+                    const savedTitle = localStorage.getItem('app_main_title');
+                    if (savedTitle) {
+                        document.getElementById('main-title').innerText = savedTitle;
+                        document.title = savedTitle;
+                    }
+                }
+
+                // 2. 解析云端数据 CSV
+                if (csvText) {
+                    let rows = parseNativeCSV(csvText);
+                    if (rows && rows.length >= 5) {
+                        processData(rows);
+                        return; // 成功解析线上数据，结束初始化
+                    }
+                }
+                
+                // 3. 降级：如果云端均无文件，或解析失败，寻找本地浏览器缓存 (方便本机测试)
+                checkLocalCache();
+            });
+        };
+
+        function checkLocalCache() {
+            const savedData = localStorage.getItem('realEstateMacroData');
+            if (savedData) { 
+                try { processData(JSON.parse(savedData)); } catch (e) { showEmptyMessage(); } 
+            } else { 
+                showEmptyMessage(); 
+            }
+        }
+
+        function showEmptyMessage() {
+            document.getElementById('city-selector-wrapper').style.display = 'none';
+            document.getElementById('charts-container').innerHTML = '<div style="text-align: center; color: #888; padding: 50px;">欢迎使用系统。<br><br><span style="font-size:14px;">(提示：未能在云端或本地找到有效数据，请作为管理员登录并配置，随后将 <b>config.json</b> 与 <b>data.csv</b> 上传至同一目录)</span></div>';
+        }
+
+        // --- 数据解析与图表渲染 ---
         function parseNativeCSV(text) {
             let rows = []; let row = []; let cell = ""; let inQuotes = false;
             for (let i = 0; i < text.length; i++) {
@@ -411,17 +491,6 @@
 
         let chartInstances = []; let globalDates = []; let globalData = null; let currentRenderTimer = null; 
 
-        window.onload = function() {
-            const savedData = localStorage.getItem('realEstateMacroData');
-            if (savedData) { try { processData(JSON.parse(savedData)); } catch (e) { showEmptyMessage(); } } 
-            else { showEmptyMessage(); }
-        };
-
-        function showEmptyMessage() {
-            document.getElementById('city-selector-wrapper').style.display = 'none';
-            document.getElementById('charts-container').innerHTML = '<div style="text-align: center; color: #888; padding: 50px;">欢迎使用。请使用管理员身份导入 4 行表头的数据文件。</div>';
-        }
-
         function downloadTemplate() {
             const templateAoA = [
                 ["指标名称", "广东:深圳:租金回报率", "中国:个人住房公积金贷款利率:5年以上", "中国:金融机构人民币贷款加权平均利率:个人住房贷款"],
@@ -434,6 +503,7 @@
             XLSX.writeFile(workbook, "房地产量化跟踪数据.xlsx");
         }
 
+        // 管理员本地导入数据 (用于预览和配置映射)
         function handleFileUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -465,7 +535,7 @@
         }
 
         function clearData() {
-            if(confirm("警告：确定要清除所有底层缓存数据吗？\n(注意：清除数据不会清空您建立的分组结构)")) {
+            if(confirm("警告：确定要清除所有本地缓存数据吗？\n(注意：清除数据不会清空您建立的分组结构)")) {
                 localStorage.removeItem('realEstateMacroData');
                 if (currentRenderTimer) clearTimeout(currentRenderTimer);
                 chartInstances.forEach(chart => chart.dispose()); chartInstances = []; globalData = null;
